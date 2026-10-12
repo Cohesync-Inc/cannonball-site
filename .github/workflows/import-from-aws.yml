@@ -1,0 +1,40 @@
+# Copies the live cannonballdigitalworks.com page from the old AWS server (52.200.230.134) into this repo.
+# Runs once, automatically, when this file is committed. Removed again by the follow-up commit.
+name: Import site from AWS
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/import-from-aws.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the page from the AWS server
+        run: |
+          set -euo pipefail
+          # --resolve pins the hostname to the old server, so this still works after DNS moves to GitHub Pages
+          curl -fsS --resolve www.cannonballdigitalworks.com:443:52.200.230.134 \
+            -o index.html https://www.cannonballdigitalworks.com/
+          echo "index.html $(wc -c < index.html) bytes"
+          grep -q 'Cannonball Digital Works' index.html || { echo "ERROR: unexpected page content"; exit 1; }
+          # Anything else the server serves at common paths (kept only if it's not the same HTML page)
+          for f in favicon.ico robots.txt sitemap.xml; do
+            if curl -fsS --resolve www.cannonballdigitalworks.com:443:52.200.230.134 -o "$f" "https://www.cannonballdigitalworks.com/$f" \
+               && ! grep -q '<html' "$f" 2>/dev/null; then echo "$f $(wc -c < "$f") bytes"; else rm -f "$f"; fi
+          done
+
+      - name: Commit files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Import live cannonballdigitalworks.com page from AWS" || echo "Nothing to commit"
+          git push
